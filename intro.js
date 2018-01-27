@@ -315,6 +315,7 @@ function _introForElement(targetElm) {
   self._introItems = introItems;
 
   //add overlay layer to the page
+  self._elementDimensions = null;
   if(_addOverlayLayer.call(self, targetElm)) {
     _executeEventListeners.call(this, EVENT_NAMES.start, null).then(function () {
       //then, start the show
@@ -1711,20 +1712,22 @@ function _elementInViewport(el) {
     function animate () { 
       factor += 0.05;
       factor = Math.min(factor, 1);
-      if (targetElement.position === "floating") {
-        overlayDimensions.width.left = parentDimensions.width / 2 - parentDimensions.left;  
-        overlayDimensions.width.center = 0; 
 
-        overlayDimensions.height.top = parentDimensions.height / 2 - parentDimensions.top;
-        overlayDimensions.height.center = 0;
+      overlayDimensions.width.left = (1 - factor) * this._elementDimensions.left;  
+      overlayDimensions.width.center = (1 - factor) * this._elementDimensions.width; 
+      overlayDimensions.height.top = (1 - factor) * this._elementDimensions.top;
+      overlayDimensions.height.center = (1 - factor) * this._elementDimensions.height;
+
+      if (targetElement.position === "floating") {
+        overlayDimensions.width.left += factor * (parentDimensions.width / 2 - parentDimensions.left);   
+        overlayDimensions.height.top += factor * (parentDimensions.height / 2 - parentDimensions.top);
       } else {
         var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
 
-        overlayDimensions.width.left = (1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - parentDimensions.left - topLeftPadding;  
-        overlayDimensions.width.center = (1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + this._options.helperElementPadding; 
-
-        overlayDimensions.height.top = (1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - parentDimensions.top - topLeftPadding;
-        overlayDimensions.height.center = (1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + this._options.helperElementPadding;
+        overlayDimensions.width.left += factor * elementDimensions.left - parentDimensions.left - topLeftPadding;  
+        overlayDimensions.width.center += factor * elementDimensions.width + this._options.helperElementPadding; 
+        overlayDimensions.height.top += factor * elementDimensions.top - parentDimensions.top - topLeftPadding;
+        overlayDimensions.height.center += factor * elementDimensions.height + this._options.helperElementPadding;
       }
 
       overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
