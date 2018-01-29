@@ -553,11 +553,9 @@ function _previousStep() {
  */
 function _refresh() {
   // re-align intros
-  _setHelperLayerPosition.call(this, document.querySelector('.introjs-helperLayer'));
-  _setHelperLayerPosition.call(this, document.querySelector('.introjs-tooltipReferenceLayer'));
   _setHelperLayerPosition.call(this, document.querySelector('.introjs-disableInteraction'));
 
-  _setStepsOverlayPosition.call(this, this._introItems[this._currentStep]);
+  _transitionLayers.call(this, this._introItems[this._currentStep], false);
 
   // re-align tooltip
   if(this._currentStep !== undefined && this._currentStep !== null) {
@@ -569,6 +567,9 @@ function _refresh() {
 
   //re-align hints
   _reAlignHints.call(this);
+
+  _setLayerOpacity(1);
+
   return this;
 }
 
@@ -1115,13 +1116,10 @@ function _showElement(targetElement) {
         }
 
         // change the scroll of the window, if needed
-      _scrollTo.call(self, targetElement.scrollTo, targetElement, oldtooltipLayer);
+        _scrollTo.call(self, targetElement.scrollTo, targetElement, oldtooltipLayer);
 
         //set new position to helper layer
-        _setHelperLayerPosition.call(self, oldHelperLayer);
-        _setHelperLayerPosition.call(self, oldReferenceLayer);
-
-        _setStepsOverlayPosition.call(self, targetElement);
+        _transitionLayers.call(self, targetElement, true);
 
         //we should wait until the CSS3 transition is competed (it's 0.3 sec) to prevent incorrect `height` and `width` calculation
         if (self._lastShowElementTimer) {
@@ -1179,15 +1177,12 @@ function _showElement(targetElement) {
         // change the scroll of the window, if needed
         _scrollTo.call(this, targetElement.scrollTo, targetElement, tooltipLayer);
 
-        //set new position to helper layer
-        _setHelperLayerPosition.call(self, helperLayer);
-        _setHelperLayerPosition.call(self, referenceLayer);
-
-        _setStepsOverlayPosition.call(self, targetElement);
-
         //add helper layer to target element
         this._targetElement.appendChild(helperLayer);
         this._targetElement.appendChild(referenceLayer);
+
+        //set new position to helper layer
+        _transitionLayers.call(self, targetElement, false);
 
         arrowLayer.className = 'introjs-arrow';
 
@@ -1649,21 +1644,12 @@ function _elementInViewport(el) {
     return true;
   }
 
-  /**
-   * Position and resize overlay layers
-   *
-   * @api private
-   * @method _setStepsOverlayPosition
-   * @param {Object} targetElement
-   */
-  function _setStepsOverlayPosition(targetElement) {
+  function _transitionLayers(targetElement, doAnimation) {
     var elementDimensions = _getOffset(targetElement.element);
     if (this._elementDimensions === null) {
       this._elementDimensions = elementDimensions;
     }
-    var overlayOpacity = this._options.overlayOpacity.toString();
-    var borderWidth = 1;
-  
+    
     //get dimensions of the document
     var body = document.body;
     var html = document.documentElement;
@@ -1694,6 +1680,68 @@ function _elementInViewport(el) {
       }
     }
 
+    var helperLayer = document.querySelector('.introjs-helperLayer');
+    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
+
+    var factor = doAnimation ? 0 : 1;
+    //var distance = Math.sqrt(Math.pow(this._elementDimensions.top - elementDimensions.top, 2) + Math.pow(this._elementDimensions.left - elementDimensions.left, 2));
+    //var delta = 1 / (distance / 20);
+    // delta: 60 fps times .3 seconds for the animation
+    var delta = 1. / (60 * .3);
+    
+    animate.call(this);
+
+    function animate () { 
+      factor += delta;
+      factor = Math.min(factor, 1);
+
+      _changeHelperLayerPosition.call(this, factor, helperLayer, targetElement, elementDimensions, parentIsFixed)
+      _changeHelperLayerPosition.call(this, factor, tooltipLayer, targetElement, elementDimensions, parentIsFixed);
+      _changeStepsOverlayPosition.call(this, factor, parentDimensions, targetElement, elementDimensions, parentIsFixed);
+
+      if (factor < 1) {
+        requestAnimationFrame(animate.bind(this));
+      } else {
+        this._elementDimensions = elementDimensions;
+        _setLayerOpacity(1);
+      }
+    }
+  }
+
+  function _changeHelperLayerPosition(factor, helperLayer, targetElement, elementDimensions, parentIsFixed) {
+    var widthHeightPadding = this._options.helperElementPadding;
+
+    // If the target element is fixed, the tooltip should be fixed as well.
+    // Otherwise, remove a fixed class that may be left over from the previous
+    // step.
+    if (parentIsFixed) {
+      _addClass(helperLayer, 'introjs-fixedTooltip');
+    } else {
+      _removeClass(helperLayer, 'introjs-fixedTooltip');
+    }
+
+    if (targetElement.position === 'floating') {
+      widthHeightPadding = 0;
+    }
+
+    //set new position to helper layer
+    helperLayer.setAttribute('style', 'width: ' + ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + widthHeightPadding)  + 'px; ' +
+                                      'height:' + ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + widthHeightPadding)  + 'px; ' +
+                                      'top:'    + ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - widthHeightPadding / 2)   + 'px;' +
+                                      'left: '  + ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - widthHeightPadding / 2)   + 'px;');
+  }
+
+  /**
+   * Position and resize overlay layers
+   *
+   * @api private
+   * @method _changeStepsOverlayPosition
+   * @param {Object} targetElement
+   */
+  function _changeStepsOverlayPosition(factor, parentDimensions, targetElement, elementDimensions, parentIsFixed) {
+    var overlayOpacity = this._options.overlayOpacity.toString();
+    var borderWidth = 1;
+
     //compute dimensions of the four overlay parts
     var overlayDimensions = {
       offset: {},
@@ -1704,78 +1752,62 @@ function _elementInViewport(el) {
     overlayDimensions.offset.left = parentDimensions.left;
     overlayDimensions.offset.top = parentDimensions.top;
 
-    var factor = 0;
-    // delta: 60 fps times .3 seconds for the animation
-    var delta = 60 * .3;
-    animate.call(this);
+    overlayDimensions.width.left = (1 - factor) * this._elementDimensions.left;  
+    overlayDimensions.width.center = (1 - factor) * this._elementDimensions.width; 
+    overlayDimensions.height.top = (1 - factor) * this._elementDimensions.top;
+    overlayDimensions.height.center = (1 - factor) * this._elementDimensions.height;
 
-    function animate () { 
-      factor += 0.05;
-      factor = Math.min(factor, 1);
+    if (targetElement.position === "floating") {
+      overlayDimensions.width.left += factor * (parentDimensions.width / 2 - parentDimensions.left);   
+      overlayDimensions.height.top += factor * (parentDimensions.height / 2 - parentDimensions.top);
+    } else {
+      var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
 
-      overlayDimensions.width.left = (1 - factor) * this._elementDimensions.left;  
-      overlayDimensions.width.center = (1 - factor) * this._elementDimensions.width; 
-      overlayDimensions.height.top = (1 - factor) * this._elementDimensions.top;
-      overlayDimensions.height.center = (1 - factor) * this._elementDimensions.height;
-
-      if (targetElement.position === "floating") {
-        overlayDimensions.width.left += factor * (parentDimensions.width / 2 - parentDimensions.left);   
-        overlayDimensions.height.top += factor * (parentDimensions.height / 2 - parentDimensions.top);
-      } else {
-        var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
-
-        overlayDimensions.width.left += factor * elementDimensions.left - parentDimensions.left - topLeftPadding;  
-        overlayDimensions.width.center += factor * elementDimensions.width + this._options.helperElementPadding; 
-        overlayDimensions.height.top += factor * elementDimensions.top - parentDimensions.top - topLeftPadding;
-        overlayDimensions.height.center += factor * elementDimensions.height + this._options.helperElementPadding;
-      }
-
-      overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
-      overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center); 
-
-      //compute and set the styles for the four overlays
-      Object.getOwnPropertyNames(POSITIONS).forEach(function(key) {
-        var position = POSITIONS[key];
-        var styleString = 'opacity: ' + overlayOpacity + ';';
-        if (parentIsFixed) {
-          styleString += ' position: fixed;';
-        }
-        switch (position) {
-          case POSITIONS.LEFT:
-            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-            styleString += ' left: ' + overlayDimensions.offset.left + 'px;';
-            styleString += ' width: ' + overlayDimensions.width.left + 'px;';
-            styleString += ' height: ' + parentDimensions.height + 'px;';
-            break;
-          case POSITIONS.RIGHT:
-            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center) + 'px;';
-            styleString += ' width: ' + overlayDimensions.width.right + 'px;';
-            styleString += ' height: ' + parentDimensions.height + 'px;';
-            break;
-          case POSITIONS.TOP:
-            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
-            styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-            styleString += ' height: ' + overlayDimensions.height.top + 'px;';
-            break;
-          case POSITIONS.BOTTOM:
-            styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center) + 'px;';
-            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
-            styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-            styleString += ' height: ' + overlayDimensions.height.bottom + 'px;';
-            break;
-        }
-        var overlay = document.getElementsByClassName('introjs-overlay-' + position)[0];
-        overlay.setAttribute('style', styleString);
-      });
-
-      if (factor < 1) {
-        requestAnimationFrame(animate.bind(this));
-      } else {
-        this._elementDimensions = elementDimensions;
-      }
+      overlayDimensions.width.left += factor * elementDimensions.left - parentDimensions.left - topLeftPadding;  
+      overlayDimensions.width.center += factor * elementDimensions.width + this._options.helperElementPadding; 
+      overlayDimensions.height.top += factor * elementDimensions.top - parentDimensions.top - topLeftPadding;
+      overlayDimensions.height.center += factor * elementDimensions.height + this._options.helperElementPadding;
     }
+
+    overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
+    overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center); 
+
+    //compute and set the styles for the four overlays
+    Object.getOwnPropertyNames(POSITIONS).forEach(function(key) {
+      var position = POSITIONS[key];
+      var styleString = 'opacity: ' + overlayOpacity + ';';
+      if (parentIsFixed) {
+        styleString += ' position: fixed;';
+      }
+      switch (position) {
+        case POSITIONS.LEFT:
+          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+          styleString += ' left: ' + overlayDimensions.offset.left + 'px;';
+          styleString += ' width: ' + overlayDimensions.width.left + 'px;';
+          styleString += ' height: ' + parentDimensions.height + 'px;';
+          break;
+        case POSITIONS.RIGHT:
+          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center) + 'px;';
+          styleString += ' width: ' + overlayDimensions.width.right + 'px;';
+          styleString += ' height: ' + parentDimensions.height + 'px;';
+          break;
+        case POSITIONS.TOP:
+          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
+          styleString += ' width: ' + overlayDimensions.width.center + 'px;';
+          styleString += ' height: ' + overlayDimensions.height.top + 'px;';
+          break;
+        case POSITIONS.BOTTOM:
+          styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center) + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
+          styleString += ' width: ' + overlayDimensions.width.center + 'px;';
+          styleString += ' height: ' + overlayDimensions.height.bottom + 'px;';
+          break;
+      }
+      var overlay = document.getElementsByClassName('introjs-overlay-' + position)[0];
+      overlay.setAttribute('style', styleString);
+    });
   }
 
 /**
