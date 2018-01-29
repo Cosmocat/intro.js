@@ -154,6 +154,8 @@ function IntroJs(obj) {
     hintAnimation: true
   };
 
+  this._elementDimensions = null;
+
   //create eventHandler object; one array for each event.
   this._eventHandler = {};
   _forEach(Object.getOwnPropertyNames(EVENT_NAMES), function(key) {
@@ -313,6 +315,7 @@ function _introForElement(targetElm) {
   self._introItems = introItems;
 
   //add overlay layer to the page
+  self._elementDimensions = null;
   if(_addOverlayLayer.call(self, targetElm)) {
     _executeEventListeners.call(this, EVENT_NAMES.start, null).then(function () {
       //then, start the show
@@ -1655,6 +1658,9 @@ function _elementInViewport(el) {
    */
   function _setStepsOverlayPosition(targetElement) {
     var elementDimensions = _getOffset(targetElement.element);
+    if (this._elementDimensions === null) {
+      this._elementDimensions = elementDimensions;
+    }
     var overlayOpacity = this._options.overlayOpacity.toString();
     var borderWidth = 1;
   
@@ -1697,62 +1703,79 @@ function _elementInViewport(el) {
 
     overlayDimensions.offset.left = parentDimensions.left;
     overlayDimensions.offset.top = parentDimensions.top;
-    
-    if (targetElement.position === "floating") {
-      overlayDimensions.width.left = parentDimensions.width / 2 - parentDimensions.left;  
-      overlayDimensions.width.center = 0; 
 
-      overlayDimensions.height.top = parentDimensions.height / 2 - parentDimensions.top;
-      overlayDimensions.height.center = 0;
-    } else {
-      var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
+    var factor = 0;
+    // delta: 60 fps times .3 seconds for the animation
+    var delta = 60 * .3;
+    animate.call(this);
 
-      overlayDimensions.width.left = elementDimensions.left - parentDimensions.left - topLeftPadding;  
-      overlayDimensions.width.center = elementDimensions.width + this._options.helperElementPadding; 
+    function animate () { 
+      factor += 0.05;
+      factor = Math.min(factor, 1);
 
-      overlayDimensions.height.top = elementDimensions.top - parentDimensions.top - topLeftPadding;
-      overlayDimensions.height.center = elementDimensions.height + this._options.helperElementPadding;
+      overlayDimensions.width.left = (1 - factor) * this._elementDimensions.left;  
+      overlayDimensions.width.center = (1 - factor) * this._elementDimensions.width; 
+      overlayDimensions.height.top = (1 - factor) * this._elementDimensions.top;
+      overlayDimensions.height.center = (1 - factor) * this._elementDimensions.height;
+
+      if (targetElement.position === "floating") {
+        overlayDimensions.width.left += factor * (parentDimensions.width / 2 - parentDimensions.left);   
+        overlayDimensions.height.top += factor * (parentDimensions.height / 2 - parentDimensions.top);
+      } else {
+        var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
+
+        overlayDimensions.width.left += factor * elementDimensions.left - parentDimensions.left - topLeftPadding;  
+        overlayDimensions.width.center += factor * elementDimensions.width + this._options.helperElementPadding; 
+        overlayDimensions.height.top += factor * elementDimensions.top - parentDimensions.top - topLeftPadding;
+        overlayDimensions.height.center += factor * elementDimensions.height + this._options.helperElementPadding;
+      }
+
+      overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
+      overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center); 
+
+      //compute and set the styles for the four overlays
+      Object.getOwnPropertyNames(POSITIONS).forEach(function(key) {
+        var position = POSITIONS[key];
+        var styleString = 'opacity: ' + overlayOpacity + ';';
+        if (parentIsFixed) {
+          styleString += ' position: fixed;';
+        }
+        switch (position) {
+          case POSITIONS.LEFT:
+            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+            styleString += ' left: ' + overlayDimensions.offset.left + 'px;';
+            styleString += ' width: ' + overlayDimensions.width.left + 'px;';
+            styleString += ' height: ' + parentDimensions.height + 'px;';
+            break;
+          case POSITIONS.RIGHT:
+            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center) + 'px;';
+            styleString += ' width: ' + overlayDimensions.width.right + 'px;';
+            styleString += ' height: ' + parentDimensions.height + 'px;';
+            break;
+          case POSITIONS.TOP:
+            styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
+            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
+            styleString += ' width: ' + overlayDimensions.width.center + 'px;';
+            styleString += ' height: ' + overlayDimensions.height.top + 'px;';
+            break;
+          case POSITIONS.BOTTOM:
+            styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center) + 'px;';
+            styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
+            styleString += ' width: ' + overlayDimensions.width.center + 'px;';
+            styleString += ' height: ' + overlayDimensions.height.bottom + 'px;';
+            break;
+        }
+        var overlay = document.getElementsByClassName('introjs-overlay-' + position)[0];
+        overlay.setAttribute('style', styleString);
+      });
+
+      if (factor < 1) {
+        requestAnimationFrame(animate.bind(this));
+      } else {
+        this._elementDimensions = elementDimensions;
+      }
     }
-
-    overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
-    overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center); 
-
-    //compute and set the styles for the four overlays
-    Object.getOwnPropertyNames(POSITIONS).forEach(function(key) {
-      var position = POSITIONS[key];
-      var styleString = 'opacity: ' + overlayOpacity + ';';
-      if (parentIsFixed) {
-        styleString += ' position: fixed;';
-      }
-      switch (position) {
-        case POSITIONS.LEFT:
-          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-          styleString += ' left: ' + overlayDimensions.offset.left + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.left + 'px;';
-          styleString += ' height: ' + parentDimensions.height + 'px;';
-          break;
-        case POSITIONS.RIGHT:
-          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center) + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.right + 'px;';
-          styleString += ' height: ' + parentDimensions.height + 'px;';
-          break;
-        case POSITIONS.TOP:
-          styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-          styleString += ' height: ' + overlayDimensions.height.top + 'px;';
-          break;
-        case POSITIONS.BOTTOM:
-          styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center) + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-          styleString += ' height: ' + overlayDimensions.height.bottom + 'px;';
-          break;
-      }
-      var overlay = document.getElementsByClassName('introjs-overlay-' + position)[0];
-      overlay.setAttribute('style', styleString);
-    });
   }
 
 /**
