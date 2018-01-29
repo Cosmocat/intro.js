@@ -1696,7 +1696,7 @@ function _elementInViewport(el) {
         factor = Math.min(factor, 1);
 
         _changeHelperLayerPosition.call(this, factor, helperLayer, targetElement, elementDimensions, parentIsFixed)
-        _changeHelperLayerPosition.call(this, factor, tooltipLayer, targetElement, elementDimensions, parentIsFixed);
+        _changeTooltipLayerPosition.call(this, factor, tooltipLayer, elementDimensions);
         _changeStepsOverlayPosition.call(this, factor, parentDimensions, targetElement, elementDimensions, parentIsFixed);
         _scrollTo.call(this, 'tooltip', targetElement, tooltipLayer);
 
@@ -1731,21 +1731,41 @@ function _elementInViewport(el) {
     }
 
     //set new position to helper layer
-    if (this._elementDimensions === null) {
+    if (this._elementDimensions === null && targetElement.position === 'floating') {
+      helperLayer.style.left = elementDimensions.left + 'px';
+      helperLayer.style.top = elementDimensions.top + 'px';
+      helperLayer.style.width = elementDimensions.width + 'px';
+      helperLayer.style.height = elementDimensions.height + 'px';
+    } else if (this._elementDimensions === null) {
       helperLayer.style.left = elementDimensions.left + (1 - factor) * elementDimensions.width / 2 - factor * widthHeightPadding / 2 + 'px';
       helperLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 - factor * widthHeightPadding / 2 + 'px';
       helperLayer.style.width = factor * (elementDimensions.width + widthHeightPadding) + 'px';
       helperLayer.style.height = factor * (elementDimensions.height + widthHeightPadding) + 'px';
     } else if (targetElement.position === 'floating') {
-      helperLayer.style.left = elementDimensions.left + factor * elementDimensions.width / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
-      helperLayer.style.top = elementDimensions.top + factor * elementDimensions.height / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
-      helperLayer.style.width = (1 - factor) * (elementDimensions.width + widthHeightPadding) + 'px';
-      helperLayer.style.height = (1 - factor) * (elementDimensions.height + widthHeightPadding) + 'px';
+      helperLayer.style.left = this._elementDimensions.left + factor * this._elementDimensions.width / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
+      helperLayer.style.top = this._elementDimensions.top + factor * this._elementDimensions.height / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
+      helperLayer.style.width = (1 - factor) * (this._elementDimensions.width + widthHeightPadding) + 'px';
+      helperLayer.style.height = (1 - factor) * (this._elementDimensions.height + widthHeightPadding) + 'px';
     } else {
       helperLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * (elementDimensions.left - widthHeightPadding / 2))   + 'px';
       helperLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * (elementDimensions.top - widthHeightPadding / 2))   + 'px';
       helperLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * (elementDimensions.width + widthHeightPadding))  + 'px';
       helperLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * (elementDimensions.height + widthHeightPadding)) + 'px';    
+    }
+  }
+
+  function _changeTooltipLayerPosition(factor, tooltipLayer, elementDimensions) {
+    //set new position to helper layer
+    if (this._elementDimensions === null) {
+      tooltipLayer.style.left = elementDimensions.left + (1 - factor) * elementDimensions.width / 2 + 'px';
+      tooltipLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 + 'px';
+      tooltipLayer.style.width = factor * (elementDimensions.width) + 'px';
+      tooltipLayer.style.height = factor * (elementDimensions.height) + 'px';
+    } else {
+      tooltipLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left)   + 'px';
+      tooltipLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top)   + 'px';
+      tooltipLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width)  + 'px';
+      tooltipLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height) + 'px';    
     }
   }
 
