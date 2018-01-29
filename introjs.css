@@ -40,11 +40,11 @@ tr.introjs-showElement > th {
   border-radius: 4px;
   box-shadow: 0 2px 15px rgba(0,0,0,.4);
   opacity: 0;
-  -webkit-transition: all 0.3s ease-out;
-     -moz-transition: all 0.3s ease-out;
-      -ms-transition: all 0.3s ease-out;
-       -o-transition: all 0.3s ease-out;
-          transition: all 0.3s ease-out;
+  -webkit-transition: opacity 0.3s ease-out;
+     -moz-transition: opacity 0.3s ease-out;
+      -ms-transition: opacity 0.3s ease-out;
+       -o-transition: opacity 0.3s ease-out;
+          transition: opacity 0.3s ease-out;
 }
 
 .introjs-tooltipReferenceLayer {
@@ -54,11 +54,11 @@ tr.introjs-showElement > th {
   z-index: 100000000;
   background-color: transparent;
   opacity: 0;
-  -webkit-transition: all 0.3s ease-out;
-     -moz-transition: all 0.3s ease-out;
-      -ms-transition: all 0.3s ease-out;
-       -o-transition: all 0.3s ease-out;
-          transition: all 0.3s ease-out;
+  -webkit-transition: opacity 0.3s ease-out;
+     -moz-transition: opacity 0.3s ease-out;
+      -ms-transition: opacity 0.3s ease-out;
+       -o-transition: opacity 0.3s ease-out;
+          transition: opacity 0.3s ease-out;
 }
 
 .introjs-helperLayer *,
