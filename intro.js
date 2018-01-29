@@ -467,8 +467,6 @@ function _nextStep() {
   this._blockUserInteraction = true;
   this._direction = 'forward';
 
-  _setLayerOpacity(0);
-
   if (typeof (this._currentStepNumber) !== 'undefined') {
     _forEach(this._introItems, function (item, i) {
       if( item.step === this._currentStepNumber ) {
@@ -524,7 +522,6 @@ function _previousStep() {
   }
 
   this._blockUserInteraction = true;
-  _setLayerOpacity(0);
 
   --this._currentStep;
 
@@ -1400,7 +1397,6 @@ function _showElement(targetElement) {
       // Call event handlers for 'afterChange'.
       _executeEventListeners.call(this, EVENT_NAMES.afterChange, null, targetElement.element).then(
         function () {
-          _setLayerOpacity(1);
           // unblock user interaction
           this._blockUserInteraction = false;
         }.bind(this)
@@ -1679,14 +1675,13 @@ function _elementInViewport(el) {
     var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
 
     var factor = doAnimation ? 0 : 1;
-    var delta = 0;
+    var distance;
     if (this._elementDimensions === null || targetElement.position === "floating") {
-      // delta: 60 fps times .3 seconds for the animation
-      delta = 1. / (60 * .3);
+      distance = 0;
     } else {
-      var distance = Math.sqrt(Math.pow(this._elementDimensions.top - elementDimensions.top, 2) + Math.pow(this._elementDimensions.left - elementDimensions.left, 2));
-      delta = 1 / (distance / 20);
+      distance = Math.sqrt(Math.pow(this._elementDimensions.top - elementDimensions.top, 2) + Math.pow(this._elementDimensions.left - elementDimensions.left, 2));
     }
+    var delta = 1 / Math.max(distance / 30, 60 * .3);
     
     return new Promise(function(resolve) {
       animate.call(this);
@@ -1736,21 +1731,25 @@ function _elementInViewport(el) {
       helperLayer.style.top = elementDimensions.top + 'px';
       helperLayer.style.width = elementDimensions.width + 'px';
       helperLayer.style.height = elementDimensions.height + 'px';
+      helperLayer.style.opacity = 0;
     } else if (this._elementDimensions === null) {
       helperLayer.style.left = elementDimensions.left + (1 - factor) * elementDimensions.width / 2 - factor * widthHeightPadding / 2 + 'px';
       helperLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 - factor * widthHeightPadding / 2 + 'px';
       helperLayer.style.width = factor * (elementDimensions.width + widthHeightPadding) + 'px';
       helperLayer.style.height = factor * (elementDimensions.height + widthHeightPadding) + 'px';
+      helperLayer.style.opacity = factor;
     } else if (targetElement.position === 'floating') {
       helperLayer.style.left = this._elementDimensions.left + factor * this._elementDimensions.width / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
       helperLayer.style.top = this._elementDimensions.top + factor * this._elementDimensions.height / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
       helperLayer.style.width = (1 - factor) * (this._elementDimensions.width + widthHeightPadding) + 'px';
       helperLayer.style.height = (1 - factor) * (this._elementDimensions.height + widthHeightPadding) + 'px';
+      helperLayer.style.opacity = (1 - factor);
     } else {
-      helperLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * (elementDimensions.left - widthHeightPadding / 2))   + 'px';
-      helperLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * (elementDimensions.top - widthHeightPadding / 2))   + 'px';
-      helperLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * (elementDimensions.width + widthHeightPadding))  + 'px';
-      helperLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * (elementDimensions.height + widthHeightPadding)) + 'px';    
+      helperLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - widthHeightPadding / 2)   + 'px';
+      helperLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - widthHeightPadding / 2)   + 'px';
+      helperLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + widthHeightPadding)  + 'px';
+      helperLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + widthHeightPadding) + 'px';    
+      helperLayer.style.opacity = Math.abs(factor - .5) * 2;
     }
   }
 
@@ -1761,11 +1760,13 @@ function _elementInViewport(el) {
       tooltipLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 + 'px';
       tooltipLayer.style.width = factor * (elementDimensions.width) + 'px';
       tooltipLayer.style.height = factor * (elementDimensions.height) + 'px';
+      tooltipLayer.style.opacity = factor;
     } else {
       tooltipLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left)   + 'px';
       tooltipLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top)   + 'px';
       tooltipLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width)  + 'px';
-      tooltipLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height) + 'px';    
+      tooltipLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height) + 'px'; 
+      tooltipLayer.style.opacity = Math.abs(factor - .5) * 2;  
     }
   }
 
@@ -1807,10 +1808,10 @@ function _elementInViewport(el) {
       overlayDimensions.height.top = Math.ceil(this._elementDimensions.top + factor * this._elementDimensions.height / 2 - (1 - factor) * topLeftPadding - parentDimensions.top);
       overlayDimensions.height.center = Math.ceil((1 - factor) * (this._elementDimensions.height + this._options.helperElementPadding));
     } else {
-      overlayDimensions.width.left = Math.ceil((1 - factor) * this._elementDimensions.left + factor * (elementDimensions.left - topLeftPadding) - parentDimensions.left);  
-      overlayDimensions.width.center = Math.ceil((1 - factor) * this._elementDimensions.width + factor * (elementDimensions.width + this._options.helperElementPadding)); 
-      overlayDimensions.height.top = Math.ceil((1 - factor) * this._elementDimensions.top + factor * (elementDimensions.top - topLeftPadding) - parentDimensions.top);
-      overlayDimensions.height.center = Math.ceil((1 - factor) * this._elementDimensions.height + factor * (elementDimensions.height + this._options.helperElementPadding));
+      overlayDimensions.width.left = Math.ceil((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - topLeftPadding - parentDimensions.left);  
+      overlayDimensions.width.center = Math.ceil((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + this._options.helperElementPadding); 
+      overlayDimensions.height.top = Math.ceil((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - topLeftPadding - parentDimensions.top);
+      overlayDimensions.height.center = Math.ceil((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + this._options.helperElementPadding);
     }
     
     overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
@@ -2379,6 +2380,7 @@ function _failIntro(blockEvents) {
  * @param {Number} Opacity
  */
 function _setLayerOpacity(opacity) {
+  
   var helperLayer = document.querySelector('.introjs-helperLayer');
   if (helperLayer) {
     helperLayer.style.opacity = opacity;
