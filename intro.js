@@ -1703,7 +1703,6 @@ function _elementInViewport(el) {
         requestAnimationFrame(animate.bind(this));
       } else {
         this._elementDimensions = elementDimensions;
-        _setLayerOpacity(1);
       }
     }
   }
@@ -1725,10 +1724,10 @@ function _elementInViewport(el) {
     }
 
     //set new position to helper layer
-    helperLayer.setAttribute('style', 'width: ' + ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + widthHeightPadding)  + 'px; ' +
-                                      'height:' + ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + widthHeightPadding)  + 'px; ' +
-                                      'top:'    + ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - widthHeightPadding / 2)   + 'px;' +
-                                      'left: '  + ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - widthHeightPadding / 2)   + 'px;');
+    helperLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + widthHeightPadding)  + 'px';
+    helperLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + widthHeightPadding) + 'px';
+    helperLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - widthHeightPadding / 2)   + 'px';
+    helperLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - widthHeightPadding / 2)   + 'px';
   }
 
   /**
