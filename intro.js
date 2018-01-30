@@ -83,8 +83,27 @@ var EVENT_NAMES = Object.create({}, {
   beforeExit: {
     value: 'BeforeExit',
     writable: false
-  }}
-);
+  }
+});
+
+var TRANSITION = Object.create({}, {
+  tunnelIn: {
+    value: 'tunnelIn',
+    writable: false
+  },
+  tunnelOut: {
+    value: 'tunnelOut',
+    writable: false
+  },
+  slide: {
+    value: 'slide',
+    writable: false
+  },
+  none: {
+    value: 'none',
+    writable: false
+  }
+});
 
 /**
  * IntroJs main class
@@ -145,7 +164,7 @@ function IntroJs(obj) {
     /* Disable an interaction with element? */
     disableInteraction: false,
     /* Set how much padding to be used around helper element */
-    helperElementPadding: 10,
+    helperElementPadding: 15,
     /* Default hint position */
     hintPosition: 'top-middle',
     /* Hint button label */
@@ -154,7 +173,8 @@ function IntroJs(obj) {
     hintAnimation: true
   };
 
-  this._elementDimensions = null;
+  this._previousElementDimensions = null;
+  this._previousStep = null;
 
   //create eventHandler object; one array for each event.
   this._eventHandler = {};
@@ -254,7 +274,9 @@ function _introForElement(targetElm) {
           highlightClass: currentElement.getAttribute('data-highlightclass'),
           position: currentElement.getAttribute('data-position') || this._options.tooltipPosition,
           scrollTo: currentElement.getAttribute('data-scrollto') || this._options.scrollTo,
-          disableInteraction: disableInteraction
+          disableInteraction: disableInteraction,
+          transitionIn: currentElement.getAttribute('data-transition-in'),
+          transitionOut: currentElement.getAttribute('data-transition-out')
         };
       }
     }.bind(this));
@@ -289,7 +311,9 @@ function _introForElement(targetElm) {
           highlightClass: currentElement.getAttribute('data-highlightclass'),
           position: currentElement.getAttribute('data-position') || this._options.tooltipPosition,
           scrollTo: currentElement.getAttribute('data-scrollto') || this._options.scrollTo,
-          disableInteraction: disableInteraction
+          disableInteraction: disableInteraction,
+          transitionIn: currentElement.getAttribute('data-transition-in'),
+          transitionOut: currentElement.getAttribute('data-transition-out')          
         };
       }
     }.bind(this));
@@ -315,7 +339,8 @@ function _introForElement(targetElm) {
   self._introItems = introItems;
 
   //add overlay layer to the page
-  self._elementDimensions = null;
+  self._previousElementDimensions = null;
+  self._previousStep = null;
   if(_addOverlayLayer.call(self, targetElm)) {
     _executeEventListeners.call(this, EVENT_NAMES.start, null).then(function () {
       //then, start the show
@@ -476,36 +501,50 @@ function _nextStep() {
     }.bind(this));
   }
 
+  var currentStep = null;
   if (typeof (this._currentStep) === 'undefined') {
     this._currentStep = 0;
   } else {
-      ++this._currentStep;
+    currentStep = this._introItems[this._currentStep];
+    ++this._currentStep;
   }
 
-  if ((this._introItems.length) <= this._currentStep) {
-    // execute 'complete' handlers, then exit
-    _executeEventListeners.call(this, EVENT_NAMES.complete, null).then(function() {
-      _exitIntro.call(this, this._targetElement);
-    }.bind(this));
-  } else {
+  var nextStep = this._introItems[this._currentStep] || null;
 
-    var nextStep = this._introItems[this._currentStep];
-
-    _executeEventListeners.call(this, EVENT_NAMES.beforeChange, true, nextStep.element).then(
-      function(continueStep) {
-        // if `onbeforechange` returned `false`, stop displaying the element
-        if (continueStep === false) {
-          --this._currentStep;
-          return false;
-        }
-        _showElement.call(this, nextStep);
-      }.bind(this)
-    ).catch(
-      function(blockEvents) {
-        _failIntro.call(this, blockEvents);
-      }.bind(this)
-    );
+  var transition = currentStep && currentStep.transitionOut;
+  if (transition === "tunnel") {
+    transition = TRANSITION.tunnelOut;
   }
+
+  _hideElement.call(this, currentStep, nextStep, transition).then(function() {
+    if ((this._introItems.length) <= this._currentStep) {
+      // execute 'complete' handlers, then exit
+      _executeEventListeners.call(this, EVENT_NAMES.complete, null).then(function() {
+        _exitIntro.call(this, this._targetElement);
+      }.bind(this));
+    } else {
+      _executeEventListeners.call(this, EVENT_NAMES.beforeChange, true, nextStep.element).then(
+        function(continueStep) {
+          // if `onbeforechange` returned `false`, stop displaying the element
+          if (continueStep === false) {
+            --this._currentStep;
+            return false;
+          }
+
+          transition = nextStep.transitionIn;
+          if (transition === "tunnel") {
+            transition = TRANSITION.tunnelIn;
+          }
+
+          _showElement.call(this, currentStep, nextStep, transition);
+        }.bind(this)
+      ).catch(
+        function(blockEvents) {
+          _failIntro.call(this, blockEvents);
+        }.bind(this)
+      );
+    }
+  }.bind(this));
 }
 
 /**
@@ -523,25 +562,35 @@ function _previousStep() {
 
   this._blockUserInteraction = true;
 
+  var currentStep = this._introItems[this._currentStep];
+
   --this._currentStep;
 
   var nextStep = this._introItems[this._currentStep];
 
-  _executeEventListeners.call(this, EVENT_NAMES.beforeChange, true, nextStep.element).then(
-    function(continueStep) {
+  var transition = currentStep && currentStep.transitionIn;
+  if (transition === "tunnel") {
+    transition = TRANSITION.tunnelOut;
+  }
+
+  _hideElement.call(this, currentStep, nextStep, transition).then(function() {
+    _executeEventListeners.call(this, EVENT_NAMES.beforeChange, true, nextStep.element).then(function(continueStep) {
       // if `onbeforechange` returned `false`, stop displaying the element
       if (continueStep === false) {
         ++this._currentStep;
         return false;
       }
 
-      _showElement.call(this, nextStep);
-    }.bind(this)
-  ).catch(
-    function(blockEvents) {
+      transition = nextStep.transitionOut;
+      if (transition === "tunnel") {
+        transition = TRANSITION.tunnelIn;
+      }
+
+      _showElement.call(this, currentStep, nextStep, transition);
+    }.bind(this)).catch(function(blockEvents) {
       _failIntro.call(this, blockEvents);
-    }.bind(this)
-  );
+    }.bind(this));
+  }.bind(this));
 }
 
 /**
@@ -552,7 +601,7 @@ function _refresh() {
   // re-align intros
   _setHelperLayerPosition.call(this, document.querySelector('.introjs-disableInteraction'));
 
-  _transitionLayers.call(this, this._introItems[this._currentStep], false);
+  _transitionLayers.call(this, this._introItems[this._currentStep], TRANSITION.none);
 
   // re-align tooltip
   if(this._currentStep !== undefined && this._currentStep !== null) {
@@ -1068,8 +1117,8 @@ function _setAnchorAsButton(anchor){
  * @method _showElement
  * @param {Object} targetElement
  */
-function _showElement(targetElement) {
-  _executeEventListeners.call(this, EVENT_NAMES.change, null, targetElement.element).then(
+function _showElement(previousStep, currentStep, requestedTransition) {
+  _executeEventListeners.call(this, EVENT_NAMES.change, null, currentStep.element).then(
     function() {
       var self = this,
           oldHelperLayer = document.querySelector('.introjs-helperLayer'),
@@ -1080,8 +1129,8 @@ function _showElement(targetElement) {
           skipTooltipButton;
 
       //check for a current step highlight class
-      if (typeof (targetElement.highlightClass) === 'string') {
-        highlightClass += (' ' + targetElement.highlightClass);
+      if (typeof (currentStep.highlightClass) === 'string') {
+        highlightClass += (' ' + currentStep.highlightClass);
       }
       //check for options highlight class
       if (typeof (this._options.highlightClass) === 'string') {
@@ -1100,42 +1149,47 @@ function _showElement(targetElement) {
 
         //update or reset the helper highlight class
         oldHelperLayer.className = highlightClass;
-        //hide the tooltip
-        oldtooltipContainer.style.opacity = 0;
-        oldtooltipContainer.style.display = "none";
 
         if (oldHelperNumberLayer !== null) {
-          var lastIntroItem = this._introItems[(targetElement.step - 2 >= 0 ? targetElement.step - 2 : 0)];
+          var lastIntroItem = this._introItems[(currentStep.step - 2 >= 0 ? currentStep.step - 2 : 0)];
 
-          if (lastIntroItem !== null && (this._direction === 'forward' && lastIntroItem.position === 'floating') || (this._direction === 'backward' && targetElement.position === 'floating')) {
+          if (lastIntroItem !== null && (this._direction === 'forward' && lastIntroItem.position === 'floating') || (this._direction === 'backward' && currentStep.position === 'floating')) {
             oldHelperNumberLayer.style.opacity = 0;
           }
         }
 
+        var transition = requestedTransition || TRANSITION.slide;
+        if (currentStep.position === "floating") {
+          transition = TRANSITION.none;
+        } else if (previousStep.position === "floating") {
+          transition = TRANSITION.tunnelIn;
+        }
+
         //set new position to helper layer
-        _transitionLayers.call(self, targetElement, true).then(function() {
+        _transitionLayers.call(self, currentStep, transition).then(function() {
           // change the scroll of the window, if needed
-          _scrollTo.call(self, targetElement.scrollTo, targetElement, oldtooltipLayer);
+          _scrollTo.call(self, currentStep.scrollTo, currentStep, oldtooltipLayer);
 
           //set current step to the label
           if (oldHelperNumberLayer !== null) {
-            oldHelperNumberLayer.innerHTML = targetElement.step;
+            oldHelperNumberLayer.innerHTML = currentStep.step;
           }
           //set current tooltip text
-          oldtooltipLayer.innerHTML = targetElement.intro;
+          oldtooltipLayer.innerHTML = currentStep.intro;
           //set the tooltip position
           oldtooltipContainer.style.display = "block";
-          _placeTooltip.call(self, targetElement.element, oldtooltipContainer, oldArrowLayer, oldHelperNumberLayer);
+          _placeTooltip.call(self, currentStep.element, oldtooltipContainer, oldArrowLayer, oldHelperNumberLayer);
 
           //change active bullet
           if (self._options.showBullets) {
               oldReferenceLayer.querySelector('.introjs-bullets li > a.active').className = '';
-              oldReferenceLayer.querySelector('.introjs-bullets li > a[data-stepnumber="' + targetElement.step + '"]').className = 'active';
+              oldReferenceLayer.querySelector('.introjs-bullets li > a[data-stepnumber="' + currentStep.step + '"]').className = 'active';
           }
           oldReferenceLayer.querySelector('.introjs-progress .introjs-progressbar').setAttribute('style', 'width:' + _getProgress.call(self) + '%;');
           oldReferenceLayer.querySelector('.introjs-progress .introjs-progressbar').setAttribute('aria-valuenow', _getProgress.call(self));
 
           //show the tooltip
+          oldReferenceLayer.style.opacity = 1;
           oldtooltipContainer.style.opacity = 1;
           if (oldHelperNumberLayer) oldHelperNumberLayer.style.opacity = 1;
 
@@ -1164,19 +1218,16 @@ function _showElement(targetElement) {
         referenceLayer.className = 'introjs-tooltipReferenceLayer';
 
         // change the scroll of the window, if needed
-        _scrollTo.call(this, targetElement.scrollTo, targetElement, tooltipLayer);
+        _scrollTo.call(this, currentStep.scrollTo, currentStep, tooltipLayer);
 
         //add helper layer to target element
         this._targetElement.appendChild(helperLayer);
         this._targetElement.appendChild(referenceLayer);
 
-        //set new position to helper layer
-        _transitionLayers.call(self, targetElement, false);
-
         arrowLayer.className = 'introjs-arrow';
 
         tooltipTextLayer.className = 'introjs-tooltiptext';
-        tooltipTextLayer.innerHTML = targetElement.intro;
+        tooltipTextLayer.innerHTML = currentStep.intro;
 
         bulletsLayer.className = 'introjs-bullets';
 
@@ -1201,7 +1252,7 @@ function _showElement(targetElement) {
 
           anchorLink.onclick = anchorClick;
 
-          if (i === (targetElement.step-1)) {
+          if (i === (currentStep.step-1)) {
             anchorLink.className = 'active';
           } 
 
@@ -1244,7 +1295,7 @@ function _showElement(targetElement) {
         var helperNumberLayer = document.createElement('span');
         if (this._options.showStepNumbers === true) {
           helperNumberLayer.className = 'introjs-helperNumberLayer';
-          helperNumberLayer.innerHTML = targetElement.step;
+          helperNumberLayer.innerHTML = currentStep.step;
           referenceLayer.appendChild(helperNumberLayer);
         }
 
@@ -1305,9 +1356,17 @@ function _showElement(targetElement) {
         tooltipLayer.appendChild(buttonsLayer);
 
         //set proper position
-        _placeTooltip.call(self, targetElement.element, tooltipLayer, arrowLayer, helperNumberLayer);
+        _placeTooltip.call(self, currentStep.element, tooltipLayer, arrowLayer, helperNumberLayer);
 
         //end of new element if-else condition
+
+        var transition = TRANSITION.tunnelIn;
+        if (currentStep.position === "floating") {
+          transition = TRANSITION.none;
+        } 
+        _transitionLayers.call(self, currentStep, transition).then(function () {
+          referenceLayer.style.opacity = 1;
+        });
       }
 
       // removing previous disable interaction layer
@@ -1317,7 +1376,7 @@ function _showElement(targetElement) {
       }
 
       //disable interaction
-      if (targetElement.disableInteraction) {
+      if (currentStep.disableInteraction) {
         _disableInteraction.call(self);
       }
 
@@ -1395,7 +1454,7 @@ function _showElement(targetElement) {
       }
 
       // Call event handlers for 'afterChange'.
-      _executeEventListeners.call(this, EVENT_NAMES.afterChange, null, targetElement.element).then(
+      _executeEventListeners.call(this, EVENT_NAMES.afterChange, null, currentStep.element).then(
         function () {
           // unblock user interaction
           this._blockUserInteraction = false;
@@ -1410,6 +1469,31 @@ function _showElement(targetElement) {
       _failIntro.call(this, blockEvents);
     }.bind(this)
   );
+}
+
+function _hideElement(currentStep, nextStep, requestedTransition) {
+  if (currentStep === null) return {
+    then: function(resolve) {
+      resolve();
+    }
+  };
+
+  var transition = requestedTransition || TRANSITION.none; 
+  if (nextStep === null) {
+    transition = TRANSITION.tunnelOut;
+  }
+
+  return new Promise(function(resolve) {
+    //hide the tooltip
+    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
+    if (tooltipLayer) {
+      tooltipLayer.style.opacity = 0;
+    }
+
+    setTimeout(function() {
+      _transitionLayers.call(this, nextStep, transition).then(resolve);
+    }.bind(this), 100);
+  }.bind(this));
 }
 
 /**
@@ -1632,7 +1716,7 @@ function _elementInViewport(el) {
     return true;
   }
 
-  function _transitionLayers(targetElement, doAnimation) {
+  function _transitionLayers(currentStep, transition) {
     //get dimensions of the document
     var body = document.body;
     var html = document.documentElement;
@@ -1641,12 +1725,33 @@ function _elementInViewport(el) {
       width: Math.max(body.scrollWidth, body.offsetWidth, html.clientWidth, html.scrollWidth, html.offsetWidth)
     };
 
-    var elementDimensions = _getOffset(targetElement.element);
-    if (targetElement.position === "floating") {
+    if (this._previousElementDimensions === null) {
+      this._previousElementDimensions = {
+        offset: {
+          top: 0,
+          left: 0
+        },
+        width: {
+          left: window.outerWidth / 2,
+          center: 0,
+          right: 0
+        },
+        height: {
+          top: window.outerHeight / 2,
+          center: 0,
+          bottom: 0
+        }
+      };
+    }
+
+    var elementDimensions = {};
+    if (currentStep === null || currentStep.position === "floating") {
       elementDimensions.top = window.outerHeight / 2;
       elementDimensions.left = window.outerWidth / 2;
       elementDimensions.height = 0;
       elementDimensions.width = 0;
+    } else {
+      elementDimensions = _getOffset(currentStep.element);
     }
 
     //get dimensions of the intro parent element
@@ -1664,22 +1769,19 @@ function _elementInViewport(el) {
     } else {
       var parentOffset = _getOffset(overlayParent);
       parentDimensions = {
-          height: parentOffset.height,
-          width: parentOffset.width,
-          left: parentOffset.left,
-          top: parentOffset.top
+        height: parentOffset.height,
+        width: parentOffset.width,
+        left: parentOffset.left,
+        top: parentOffset.top
       }
     }
 
-    var helperLayer = document.querySelector('.introjs-helperLayer');
-    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
-
-    var factor = doAnimation ? 0 : 1;
+    var factor = (transition === TRANSITION.none) ? 1 : 0;
     var distance;
-    if (this._elementDimensions === null || targetElement.position === "floating") {
-      distance = 0;
+    if (transition === TRANSITION.slide) {
+      distance = Math.sqrt(Math.pow(this._previousElementDimensions.height.top - elementDimensions.top, 2) + Math.pow(this._previousElementDimensions.width.left - elementDimensions.left, 2));
     } else {
-      distance = Math.sqrt(Math.pow(this._elementDimensions.top - elementDimensions.top, 2) + Math.pow(this._elementDimensions.left - elementDimensions.left, 2));
+      distance = 0;
     }
     var delta = 1 / Math.max(distance / 30, 60 * .3);
     
@@ -1690,28 +1792,26 @@ function _elementInViewport(el) {
         factor += delta;
         factor = Math.min(factor, 1);
 
-        _changeHelperLayerPosition.call(this, factor, helperLayer, targetElement, elementDimensions, parentIsFixed)
-        _changeTooltipLayerPosition.call(this, factor, tooltipLayer, elementDimensions);
-        _changeStepsOverlayPosition.call(this, factor, parentDimensions, targetElement, elementDimensions, parentIsFixed);
-        _scrollTo.call(this, 'tooltip', targetElement, tooltipLayer);
+        var overlayDimensions = _computeOverlayPosition.call(this, factor, parentDimensions, elementDimensions, transition);
+      
+        _changeHelperLayerPosition.call(this, overlayDimensions, parentIsFixed, factor, transition);
+        _changeTooltipLayerPosition.call(this, overlayDimensions);
+        _changeStepsOverlayPosition.call(this, overlayDimensions, parentDimensions, parentIsFixed);
+        //_scrollTo.call(this, 'tooltip', currentStep, tooltipLayer);
 
         if (factor < 1) {
           requestAnimationFrame(animate.bind(this));
         } else {
-          if (targetElement.position === "floating") {
-            this._elementDimensions = null;
-          } else {
-            this._elementDimensions = elementDimensions;
-          }
+          this._previousElementDimensions = overlayDimensions;
           resolve();
         }
       }
     }.bind(this));
   }
 
-  function _changeHelperLayerPosition(factor, helperLayer, targetElement, elementDimensions, parentIsFixed) {
-    var widthHeightPadding = this._options.helperElementPadding;
-
+  function _changeHelperLayerPosition(overlayDimensions, parentIsFixed, factor, transition) {
+    var helperLayer = document.querySelector('.introjs-helperLayer');
+    
     // If the target element is fixed, the tooltip should be fixed as well.
     // Otherwise, remove a fixed class that may be left over from the previous
     // step.
@@ -1721,53 +1821,70 @@ function _elementInViewport(el) {
       _removeClass(helperLayer, 'introjs-fixedTooltip');
     }
 
-    if (targetElement.position === 'floating') {
-      widthHeightPadding = 0;
-    }
+    helperLayer.style.left = overlayDimensions.width.left + 'px';
+    helperLayer.style.top = overlayDimensions.height.top + 'px';
+    helperLayer.style.width = overlayDimensions.width.center + 'px';
+    helperLayer.style.height = overlayDimensions.height.center + 'px';
 
-    //set new position to helper layer
-    if (this._elementDimensions === null && targetElement.position === 'floating') {
-      helperLayer.style.left = elementDimensions.left + 'px';
-      helperLayer.style.top = elementDimensions.top + 'px';
-      helperLayer.style.width = elementDimensions.width + 'px';
-      helperLayer.style.height = elementDimensions.height + 'px';
-      helperLayer.style.opacity = 0;
-    } else if (this._elementDimensions === null) {
-      helperLayer.style.left = elementDimensions.left + (1 - factor) * elementDimensions.width / 2 - factor * widthHeightPadding / 2 + 'px';
-      helperLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 - factor * widthHeightPadding / 2 + 'px';
-      helperLayer.style.width = factor * (elementDimensions.width + widthHeightPadding) + 'px';
-      helperLayer.style.height = factor * (elementDimensions.height + widthHeightPadding) + 'px';
+    if (transition === TRANSITION.slide) {
+      helperLayer.style.opacity = 1;
+    } else if (transition === TRANSITION.tunnelIn) {
       helperLayer.style.opacity = factor;
-    } else if (targetElement.position === 'floating') {
-      helperLayer.style.left = this._elementDimensions.left + factor * this._elementDimensions.width / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
-      helperLayer.style.top = this._elementDimensions.top + factor * this._elementDimensions.height / 2 - (1 - factor) * widthHeightPadding / 2 + 'px';
-      helperLayer.style.width = (1 - factor) * (this._elementDimensions.width + widthHeightPadding) + 'px';
-      helperLayer.style.height = (1 - factor) * (this._elementDimensions.height + widthHeightPadding) + 'px';
-      helperLayer.style.opacity = (1 - factor);
+    } else if (transition === TRANSITION.tunnelOut) {
+      helperLayer.style.opacity = 1 - factor;
     } else {
-      helperLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - widthHeightPadding / 2)   + 'px';
-      helperLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - widthHeightPadding / 2)   + 'px';
-      helperLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + widthHeightPadding)  + 'px';
-      helperLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + widthHeightPadding) + 'px';    
-      helperLayer.style.opacity = Math.abs(factor - .5) * 2;
+      helperLayer.style.opacity = 0;
     }
+    
   }
 
-  function _changeTooltipLayerPosition(factor, tooltipLayer, elementDimensions) {
-    //set new position to helper layer
-    if (this._elementDimensions === null) {
-      tooltipLayer.style.left = elementDimensions.left + (1 - factor) * elementDimensions.width / 2 + 'px';
-      tooltipLayer.style.top = elementDimensions.top + (1 - factor) * elementDimensions.height / 2 + 'px';
-      tooltipLayer.style.width = factor * (elementDimensions.width) + 'px';
-      tooltipLayer.style.height = factor * (elementDimensions.height) + 'px';
-      tooltipLayer.style.opacity = factor;
+  function _changeTooltipLayerPosition(overlayDimensions) {
+    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
+    
+    tooltipLayer.style.left = overlayDimensions.width.left + 'px';
+    tooltipLayer.style.top = overlayDimensions.height.top + 'px';
+    tooltipLayer.style.width = overlayDimensions.width.center + 'px';
+    tooltipLayer.style.height = overlayDimensions.height.center + 'px';
+  }
+
+  function _computeOverlayPosition (factor, parentDimensions, elementDimensions, transition) {
+     var overlayDimensions = {
+      offset: {},
+      width: {},
+      height: {}
+    };
+
+    overlayDimensions.offset.left = parentDimensions.left;
+    overlayDimensions.offset.top = parentDimensions.top;
+
+    var topLeftPadding = (this._options.helperElementPadding / 2);
+
+    if (transition === TRANSITION.none) {
+      overlayDimensions.width.left = this._previousElementDimensions.width.left;  
+      overlayDimensions.width.center = this._previousElementDimensions.width.center;
+      overlayDimensions.height.top = this._previousElementDimensions.height.top;
+      overlayDimensions.height.center = this._previousElementDimensions.height.center;
+    } else if (transition === TRANSITION.tunnelIn) {
+      overlayDimensions.width.left = Math.ceil(elementDimensions.left + (1 - factor) * elementDimensions.width / 2 -  factor * topLeftPadding - parentDimensions.left);  
+      overlayDimensions.width.center = Math.ceil(factor * (elementDimensions.width + this._options.helperElementPadding));
+      overlayDimensions.height.top = Math.ceil(elementDimensions.top + (1 - factor) * elementDimensions.height / 2 - factor * topLeftPadding - parentDimensions.top);
+      overlayDimensions.height.center = Math.ceil(factor * (elementDimensions.height + this._options.helperElementPadding));
+    } else if (transition === TRANSITION.tunnelOut) {
+      overlayDimensions.width.left = Math.ceil(this._previousElementDimensions.width.left + factor * this._previousElementDimensions.width.center / 2 - (1 - factor) * topLeftPadding - parentDimensions.left);  
+      overlayDimensions.width.center = Math.ceil((1 - factor) * (this._previousElementDimensions.width.center + this._options.helperElementPadding));
+      overlayDimensions.height.top = Math.ceil(this._previousElementDimensions.height.top + factor * this._previousElementDimensions.height.center / 2 - (1 - factor) * topLeftPadding - parentDimensions.top);
+      overlayDimensions.height.center = Math.ceil((1 - factor) * (this._previousElementDimensions.height.center + this._options.helperElementPadding));
     } else {
-      tooltipLayer.style.left = ((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left)   + 'px';
-      tooltipLayer.style.top = ((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top)   + 'px';
-      tooltipLayer.style.width = ((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width)  + 'px';
-      tooltipLayer.style.height = ((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height) + 'px'; 
-      tooltipLayer.style.opacity = Math.abs(factor - .5) * 2;  
+      overlayDimensions.width.left = Math.ceil((1 - factor) * this._previousElementDimensions.width.left + factor * (elementDimensions.left - topLeftPadding - parentDimensions.left));  
+      overlayDimensions.width.center = Math.ceil((1 - factor) * this._previousElementDimensions.width.center + factor * (elementDimensions.width + this._options.helperElementPadding)); 
+      overlayDimensions.height.top = Math.ceil((1 - factor) * this._previousElementDimensions.height.top + factor * (elementDimensions.top - topLeftPadding - parentDimensions.top));
+      overlayDimensions.height.center = Math.ceil((1 - factor) * this._previousElementDimensions.height.center + factor * (elementDimensions.height + this._options.helperElementPadding));
     }
+    
+    overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
+    overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center);
+
+    return overlayDimensions;
   }
 
   /**
@@ -1777,45 +1894,9 @@ function _elementInViewport(el) {
    * @method _changeStepsOverlayPosition
    * @param {Object} targetElement
    */
-  function _changeStepsOverlayPosition(factor, parentDimensions, targetElement, elementDimensions, parentIsFixed) {
+  function _changeStepsOverlayPosition(overlayDimensions, parentDimensions, parentIsFixed) {
     var overlayOpacity = this._options.overlayOpacity.toString();
     var borderWidth = 1;
-
-    //compute dimensions of the four overlay parts
-    var overlayDimensions = {
-      offset: {},
-      width: {},
-      height: {}
-    };
-
-    overlayDimensions.offset.left = parentDimensions.left;
-    overlayDimensions.offset.top = parentDimensions.top;
-
-    var topLeftPadding = (this._options.helperElementPadding / 2) - borderWidth;
-    if (this._elementDimensions === null && targetElement.position === 'floating') {
-      overlayDimensions.width.left = Math.ceil(elementDimensions.left + parentDimensions.left);  
-      overlayDimensions.width.center = Math.ceil(elementDimensions.width);
-      overlayDimensions.height.top = Math.ceil(elementDimensions.top - parentDimensions.top);
-      overlayDimensions.height.center = Math.ceil(elementDimensions.height);
-    } else if (this._elementDimensions === null) {
-      overlayDimensions.width.left = Math.ceil(elementDimensions.left + (1 - factor) * elementDimensions.width / 2 -  factor * topLeftPadding - parentDimensions.left);  
-      overlayDimensions.width.center = Math.ceil(factor * (elementDimensions.width + this._options.helperElementPadding));
-      overlayDimensions.height.top = Math.ceil(elementDimensions.top + (1 - factor) * elementDimensions.height / 2 - factor * topLeftPadding - parentDimensions.top);
-      overlayDimensions.height.center = Math.ceil(factor * (elementDimensions.height + this._options.helperElementPadding));
-    } else if (targetElement.position === 'floating') {
-      overlayDimensions.width.left = Math.ceil(this._elementDimensions.left + factor * this._elementDimensions.width / 2 - (1 - factor) * topLeftPadding - parentDimensions.left);  
-      overlayDimensions.width.center = Math.ceil((1 - factor) * (this._elementDimensions.width + this._options.helperElementPadding));
-      overlayDimensions.height.top = Math.ceil(this._elementDimensions.top + factor * this._elementDimensions.height / 2 - (1 - factor) * topLeftPadding - parentDimensions.top);
-      overlayDimensions.height.center = Math.ceil((1 - factor) * (this._elementDimensions.height + this._options.helperElementPadding));
-    } else {
-      overlayDimensions.width.left = Math.ceil((1 - factor) * this._elementDimensions.left + factor * elementDimensions.left - topLeftPadding - parentDimensions.left);  
-      overlayDimensions.width.center = Math.ceil((1 - factor) * this._elementDimensions.width + factor * elementDimensions.width + this._options.helperElementPadding); 
-      overlayDimensions.height.top = Math.ceil((1 - factor) * this._elementDimensions.top + factor * elementDimensions.top - topLeftPadding - parentDimensions.top);
-      overlayDimensions.height.center = Math.ceil((1 - factor) * this._elementDimensions.height + factor * elementDimensions.height + this._options.helperElementPadding);
-    }
-    
-    overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
-    overlayDimensions.height.bottom = parentDimensions.height - (overlayDimensions.height.top + overlayDimensions.height.center); 
 
     //compute and set the styles for the four overlays
     Object.getOwnPropertyNames(POSITIONS).forEach(function(key) {
@@ -1828,26 +1909,26 @@ function _elementInViewport(el) {
         case POSITIONS.LEFT:
           styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
           styleString += ' left: ' + overlayDimensions.offset.left + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.left + 'px;';
+          styleString += ' width: ' + (overlayDimensions.width.left + borderWidth) + 'px;';
           styleString += ' height: ' + parentDimensions.height + 'px;';
           break;
         case POSITIONS.RIGHT:
           styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center) + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.right + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + overlayDimensions.width.center + borderWidth) + 'px;';
+          styleString += ' width: ' + (overlayDimensions.width.right - borderWidth) + 'px;';
           styleString += ' height: ' + parentDimensions.height + 'px;';
           break;
         case POSITIONS.TOP:
           styleString += ' top: ' + overlayDimensions.offset.top + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
-          styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-          styleString += ' height: ' + overlayDimensions.height.top + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + borderWidth) + 'px;';
+          styleString += ' width: ' + (overlayDimensions.width.center) + 'px;';
+          styleString += ' height: ' + (overlayDimensions.height.top + borderWidth) + 'px;';
           break;
         case POSITIONS.BOTTOM:
-          styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center) + 'px;';
-          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left) + 'px;';
+          styleString += ' top: ' + (overlayDimensions.offset.top + overlayDimensions.height.top + overlayDimensions.height.center + borderWidth) + 'px;';
+          styleString += ' left: ' + (overlayDimensions.offset.left + overlayDimensions.width.left + borderWidth) + 'px;';
           styleString += ' width: ' + overlayDimensions.width.center + 'px;';
-          styleString += ' height: ' + overlayDimensions.height.bottom + 'px;';
+          styleString += ' height: ' + (overlayDimensions.height.bottom - borderWidth) + 'px;';
           break;
       }
       var overlay = document.getElementsByClassName('introjs-overlay-' + position)[0];
