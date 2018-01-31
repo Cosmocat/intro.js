@@ -208,14 +208,16 @@ function _introForElement(targetElm) {
       //set the step
       currentItem.step = introItems.length + 1;
 
-      //use querySelector function only when developer used CSS selector
-      if (typeof (currentItem.element) === 'string') {
+      if (currentItem.element instanceof Element) {
+        currentItem.elementId = currentItem.element.id || null;
+      } else if (typeof (currentItem.elementId) === 'string') {
+        currentItem.element = document.getElementById(currentItem.elementId);
+      } else if (typeof (currentItem.element) === 'string') {
         //grab the element with given selector from the page
         currentItem.element = document.querySelector(currentItem.element);
-      }
-
-      //intro without element
-      if (typeof (currentItem.element) === 'undefined' || currentItem.element === null) {
+        currentItem.elementId = currentItem.element.id || null;
+      } else {
+        //intro without element
         var floatingElementQuery = document.querySelector(".introjsFloatingElement");
 
         if (floatingElementQuery === null) {
@@ -235,7 +237,7 @@ function _introForElement(targetElm) {
         currentItem.disableInteraction = this._options.disableInteraction;
       }
 
-      if (currentItem.element !== null) {
+      if (currentItem.element instanceof Element || typeof currentItem.elementId === 'string') {
         introItems.push(currentItem);
       }        
     }.bind(this));
@@ -268,6 +270,7 @@ function _introForElement(targetElm) {
       if (step > 0) {
         introItems[step - 1] = {
           element: currentElement,
+          elementId: currentElement.id || null,
           intro: currentElement.getAttribute('data-intro'),
           step: parseInt(currentElement.getAttribute('data-step'), 10),
           tooltipClass: currentElement.getAttribute('data-tooltipclass'),
@@ -305,6 +308,7 @@ function _introForElement(targetElm) {
 
         introItems[nextStep] = {
           element: currentElement,
+          elementId: currentElement.id || null,
           intro: currentElement.getAttribute('data-intro'),
           step: nextStep + 1,
           tooltipClass: currentElement.getAttribute('data-tooltipclass'),
@@ -501,22 +505,20 @@ function _nextStep() {
     }.bind(this));
   }
 
-  var currentStep = null;
   if (typeof (this._currentStep) === 'undefined') {
     this._currentStep = 0;
   } else {
-    currentStep = this._introItems[this._currentStep];
     ++this._currentStep;
   }
 
   var nextStep = this._introItems[this._currentStep] || null;
 
-  var transition = currentStep && currentStep.transitionOut;
+  var transition = this._previousStep && this._previousStep.transitionOut;
   if (transition === "tunnel") {
     transition = TRANSITION.tunnelOut;
   }
 
-  _hideElement.call(this, currentStep, nextStep, transition).then(function() {
+  _hideElement.call(this, this._previousStep, nextStep, transition).then(function() {
     if ((this._introItems.length) <= this._currentStep) {
       // execute 'complete' handlers, then exit
       _executeEventListeners.call(this, EVENT_NAMES.complete, null).then(function() {
@@ -536,7 +538,7 @@ function _nextStep() {
             transition = TRANSITION.tunnelIn;
           }
 
-          _showElement.call(this, currentStep, nextStep, transition);
+          _showElement.call(this, this._previousStep, nextStep, transition);
         }.bind(this)
       ).catch(
         function(blockEvents) {
@@ -562,18 +564,16 @@ function _previousStep() {
 
   this._blockUserInteraction = true;
 
-  var currentStep = this._introItems[this._currentStep];
-
   --this._currentStep;
 
   var nextStep = this._introItems[this._currentStep];
 
-  var transition = currentStep && currentStep.transitionIn;
+  var transition = this._previousStep && this._previousStep.transitionIn;
   if (transition === "tunnel") {
     transition = TRANSITION.tunnelOut;
   }
 
-  _hideElement.call(this, currentStep, nextStep, transition).then(function() {
+  _hideElement.call(this, this._previousStep, nextStep, transition).then(function() {
     _executeEventListeners.call(this, EVENT_NAMES.beforeChange, true, nextStep.element).then(function(continueStep) {
       // if `onbeforechange` returned `false`, stop displaying the element
       if (continueStep === false) {
@@ -586,7 +586,7 @@ function _previousStep() {
         transition = TRANSITION.tunnelIn;
       }
 
-      _showElement.call(this, currentStep, nextStep, transition);
+      _showElement.call(this, this._previousStep, nextStep, transition);
     }.bind(this)).catch(function(blockEvents) {
       _failIntro.call(this, blockEvents);
     }.bind(this));
@@ -1118,6 +1118,9 @@ function _setAnchorAsButton(anchor){
  * @param {Object} targetElement
  */
 function _showElement(previousStep, currentStep, requestedTransition) {
+  if (typeof currentStep.elementId === "string") {
+    currentStep.element = document.getElementById(currentStep.elementId);
+  }
   _executeEventListeners.call(this, EVENT_NAMES.change, null, currentStep.element).then(
     function() {
       var self = this,
@@ -1161,7 +1164,11 @@ function _showElement(previousStep, currentStep, requestedTransition) {
         var transition = requestedTransition || TRANSITION.slide;
         if (currentStep.position === "floating") {
           transition = TRANSITION.none;
-        } else if (previousStep.position === "floating") {
+        } else if (
+          previousStep.position === "floating" ||
+          (typeof previousStep.elementId === "string" &&
+            _elementNotVisible(previousStep.elementId))
+        ) {
           transition = TRANSITION.tunnelIn;
         }
 
@@ -1458,6 +1465,7 @@ function _showElement(previousStep, currentStep, requestedTransition) {
         function () {
           // unblock user interaction
           this._blockUserInteraction = false;
+          this._previousStep = currentStep;
         }.bind(this)
       ).catch(
         function(blockEvents) {
@@ -1478,10 +1486,16 @@ function _hideElement(currentStep, nextStep, requestedTransition) {
     }
   };
 
-  var transition = requestedTransition || TRANSITION.none; 
-  if (nextStep === null) {
-    transition = TRANSITION.tunnelOut;
-  }
+  var transition = requestedTransition || TRANSITION.none;
+    if (
+      currentStep.position !== "floating" &&
+      (nextStep === null ||
+        nextStep.position === "floating" ||
+        (typeof nextStep.elementId === "string" &&
+          _elementNotVisible(nextStep.elementId)))
+    ) {
+      transition = TRANSITION.tunnelOut;
+    }
 
   return new Promise(function(resolve) {
     //hide the tooltip
@@ -1491,9 +1505,21 @@ function _hideElement(currentStep, nextStep, requestedTransition) {
     }
 
     setTimeout(function() {
-      _transitionLayers.call(this, nextStep, transition).then(resolve);
+      _transitionLayers.call(this, currentStep, transition).then(resolve);
     }.bind(this), 100);
   }.bind(this));
+}
+
+function _elementNotVisible(elementId) {
+  var element = document.getElementById(elementId);
+  if (element) {
+    return !(
+      element.offsetWidth ||
+      element.offsetHeight ||
+      element.getClientRects().length
+    );
+  }
+  return true;
 }
 
 /**
@@ -1784,6 +1810,8 @@ function _elementInViewport(el) {
       distance = 0;
     }
     var delta = 1 / Math.max(distance / 30, 60 * .3);
+
+    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
     
     return new Promise(function(resolve) {
       animate.call(this);
@@ -1795,9 +1823,9 @@ function _elementInViewport(el) {
         var overlayDimensions = _computeOverlayPosition.call(this, factor, parentDimensions, elementDimensions, transition);
       
         _changeHelperLayerPosition.call(this, overlayDimensions, parentIsFixed, factor, transition);
-        _changeTooltipLayerPosition.call(this, overlayDimensions);
+        _changeTooltipLayerPosition.call(this, overlayDimensions, tooltipLayer);
         _changeStepsOverlayPosition.call(this, overlayDimensions, parentDimensions, parentIsFixed);
-        //_scrollTo.call(this, 'tooltip', currentStep, tooltipLayer);
+        _scrollTo.call(this, "tooltip", currentStep, tooltipLayer);
 
         if (factor < 1) {
           requestAnimationFrame(animate.bind(this));
@@ -1811,6 +1839,8 @@ function _elementInViewport(el) {
 
   function _changeHelperLayerPosition(overlayDimensions, parentIsFixed, factor, transition) {
     var helperLayer = document.querySelector('.introjs-helperLayer');
+
+    if (!helperLayer) return;
     
     // If the target element is fixed, the tooltip should be fixed as well.
     // Otherwise, remove a fixed class that may be left over from the previous
@@ -1838,8 +1868,8 @@ function _elementInViewport(el) {
     
   }
 
-  function _changeTooltipLayerPosition(overlayDimensions) {
-    var tooltipLayer = document.querySelector('.introjs-tooltipReferenceLayer');
+  function _changeTooltipLayerPosition(overlayDimensions, tooltipLayer) {
+    if (!tooltipLayer) return;
     
     tooltipLayer.style.left = overlayDimensions.width.left + 'px';
     tooltipLayer.style.top = overlayDimensions.height.top + 'px';
@@ -1860,10 +1890,10 @@ function _elementInViewport(el) {
     var topLeftPadding = (this._options.helperElementPadding / 2);
 
     if (transition === TRANSITION.none) {
-      overlayDimensions.width.left = this._previousElementDimensions.width.left;  
-      overlayDimensions.width.center = this._previousElementDimensions.width.center;
-      overlayDimensions.height.top = this._previousElementDimensions.height.top;
-      overlayDimensions.height.center = this._previousElementDimensions.height.center;
+      overlayDimensions.width.left = elementDimensions.left;  
+      overlayDimensions.width.center = elementDimensions.width;
+      overlayDimensions.height.top = elementDimensions.top;
+      overlayDimensions.height.center = elementDimensions.height;
     } else if (transition === TRANSITION.tunnelIn) {
       overlayDimensions.width.left = Math.ceil(elementDimensions.left + (1 - factor) * elementDimensions.width / 2 -  factor * topLeftPadding - parentDimensions.left);  
       overlayDimensions.width.center = Math.ceil(factor * (elementDimensions.width + this._options.helperElementPadding));
@@ -1875,10 +1905,10 @@ function _elementInViewport(el) {
       overlayDimensions.height.top = Math.ceil(this._previousElementDimensions.height.top + factor * this._previousElementDimensions.height.center / 2 - (1 - factor) * topLeftPadding - parentDimensions.top);
       overlayDimensions.height.center = Math.ceil((1 - factor) * (this._previousElementDimensions.height.center + this._options.helperElementPadding));
     } else {
-      overlayDimensions.width.left = Math.ceil((1 - factor) * this._previousElementDimensions.width.left + factor * (elementDimensions.left - topLeftPadding - parentDimensions.left));  
-      overlayDimensions.width.center = Math.ceil((1 - factor) * this._previousElementDimensions.width.center + factor * (elementDimensions.width + this._options.helperElementPadding)); 
-      overlayDimensions.height.top = Math.ceil((1 - factor) * this._previousElementDimensions.height.top + factor * (elementDimensions.top - topLeftPadding - parentDimensions.top));
-      overlayDimensions.height.center = Math.ceil((1 - factor) * this._previousElementDimensions.height.center + factor * (elementDimensions.height + this._options.helperElementPadding));
+      overlayDimensions.width.left = Math.ceil((1 - factor) * this._previousElementDimensions.width.left + factor * elementDimensions.left - topLeftPadding - parentDimensions.left);  
+      overlayDimensions.width.center = Math.ceil((1 - factor) * this._previousElementDimensions.width.center + factor * elementDimensions.width + this._options.helperElementPadding); 
+      overlayDimensions.height.top = Math.ceil((1 - factor) * this._previousElementDimensions.height.top + factor * elementDimensions.top - topLeftPadding - parentDimensions.top);
+      overlayDimensions.height.center = Math.ceil((1 - factor) * this._previousElementDimensions.height.center + factor * elementDimensions.height + this._options.helperElementPadding);
     }
     
     overlayDimensions.width.right = parentDimensions.width - (overlayDimensions.width.left + overlayDimensions.width.center);
