@@ -68,6 +68,10 @@ var EVENT_NAMES = Object.create({}, {
     value: 'HintsAdded',
     writable: false
   },
+  hintsShow: {
+    value: 'HintsShow',
+    writable: false
+  },
   hintClick: {
     value: 'HintClick',
     writable: false
@@ -2117,15 +2121,17 @@ function _hideHints() {
  * @method _showHints
  */
 function _showHints() {
-  var hints = _hintQuerySelectorAll('.introjs-hint');
+  _executeEventListeners.call(this, EVENT_NAMES.hintsShow, null).then(function() {
+    var hints = _hintQuerySelectorAll('.introjs-hint');
 
-  if (hints && hints.length) {
-    _forEach(hints, function (hint) {
-      _showHint.call(this, hint.getAttribute('data-step'));
-    }.bind(this));
-  } else {
-    _populateHints.call(this, this._targetElement);
-  }
+    if (hints && hints.length) {
+      _forEach(hints, function (hint) {
+        _showHint.call(this, hint.getAttribute('data-step'));
+      }.bind(this));
+    } else {
+      _populateHints.call(this, this._targetElement);
+    }
+  }.bind(this));
 }
 
 /**
