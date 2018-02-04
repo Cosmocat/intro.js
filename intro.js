@@ -1200,7 +1200,6 @@ function _showElement(previousStep, currentStep, requestedTransition) {
           oldReferenceLayer.querySelector('.introjs-progress .introjs-progressbar').setAttribute('aria-valuenow', _getProgress.call(self));
 
           //show the tooltip
-          oldReferenceLayer.style.opacity = 1;
           oldtooltipContainer.style.opacity = 1;
           if (oldHelperNumberLayer) oldHelperNumberLayer.style.opacity = 1;
 
@@ -1212,6 +1211,7 @@ function _showElement(previousStep, currentStep, requestedTransition) {
             //still in the tour, focus on next
             nextTooltipButton.focus();
           }
+          _elementTransitionDone.call(this, currentStep, oldReferenceLayer, skipTooltipButton, prevTooltipButton, nextTooltipButton);
         }.bind(self));
 
         // end of old element if-else condition
@@ -1375,108 +1375,112 @@ function _showElement(previousStep, currentStep, requestedTransition) {
         if (currentStep.position === "floating") {
           transition = TRANSITION.none;
         } 
-        _transitionLayers.call(self, currentStep, transition).then(function () {
-          referenceLayer.style.opacity = 1;
-        });
-      }
-
-      // removing previous disable interaction layer
-      var disableInteractionLayer = self._targetElement.querySelector('.introjs-disableInteraction');
-      if (disableInteractionLayer) {
-        disableInteractionLayer.parentNode.removeChild(disableInteractionLayer);
-      }
-
-      //disable interaction
-      if (currentStep.disableInteraction) {
-        _disableInteraction.call(self);
-      }
-
-      // when it's the first step of tour
-      if (this._currentStep === 0 && this._introItems.length > 1) {
-        if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
-          skipTooltipButton.className = 'introjs-button introjs-skipbutton';
-        }
-        if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-          nextTooltipButton.className = 'introjs-button introjs-nextbutton';
-        }
-
-        if (this._options.hidePrev === true) {
-          if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
-            prevTooltipButton.className = 'introjs-button introjs-prevbutton introjs-hidden';
-          }
-          if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-            _addClass(nextTooltipButton, 'introjs-fullbutton');
-          }
-        } else {
-          if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
-            prevTooltipButton.className = 'introjs-button introjs-prevbutton introjs-disabled';
-          }
-        }
-
-        if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
-          skipTooltipButton.innerHTML = this._options.skipLabel;
-        }
-      } else if (this._introItems.length - 1 === this._currentStep || this._introItems.length === 1) {
-        // last step of tour
-        if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
-          skipTooltipButton.innerHTML = this._options.doneLabel;
-          // adding donebutton class in addition to skipbutton
-          _addClass(skipTooltipButton, 'introjs-donebutton');
-        }
-        if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
-          prevTooltipButton.className = 'introjs-button introjs-prevbutton';
-        }
-
-        if (this._options.hideNext === true) {
-          if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-            nextTooltipButton.className = 'introjs-button introjs-nextbutton introjs-hidden';
-          }
-          if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
-            _addClass(prevTooltipButton, 'introjs-fullbutton');
-          }
-        } else {
-          if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-            nextTooltipButton.className = 'introjs-button introjs-nextbutton introjs-disabled';
-          }
-        }
-      } else {
-        // steps between start and end
-        if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
-          skipTooltipButton.className = 'introjs-button introjs-skipbutton';
-        }
-        if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
-          prevTooltipButton.className = 'introjs-button introjs-prevbutton';
-        }
-        if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-          nextTooltipButton.className = 'introjs-button introjs-nextbutton';
-        }
-        if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
-          skipTooltipButton.innerHTML = this._options.skipLabel;
-        }
-      }
-
-      prevTooltipButton.setAttribute('role', 'button');
-      nextTooltipButton.setAttribute('role', 'button');
-      skipTooltipButton.setAttribute('role', 'button');
-
-      //Set focus on "next" button, so that hitting Enter always moves you onto the next step
-      if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
-        nextTooltipButton.focus();
-      }
-
-      // Call event handlers for 'afterChange'.
-      _executeEventListeners.call(this, EVENT_NAMES.afterChange, null, currentStep.element).then(
-        function () {
-          // unblock user interaction
-          this._blockUserInteraction = false;
-          this._previousStep = currentStep;
-        }.bind(this)
-      ).catch(
-        function(blockEvents) {
-          _failIntro.call(this, blockEvents);
-        }.bind(this)
-      );
+        _transitionLayers.call(self, currentStep, transition).then(
+          _elementTransitionDone.bind(this, currentStep, referenceLayer, skipTooltipButton, prevTooltipButton, nextTooltipButton)
+        );
+      }      
     }.bind(this),
+    function(blockEvents) {
+      _failIntro.call(this, blockEvents);
+    }.bind(this)
+  );
+}
+
+function _elementTransitionDone(currentStep, tooltipLayer, skipTooltipButton, prevTooltipButton, nextTooltipButton) {
+  // removing previous disable interaction layer
+  var disableInteractionLayer = this._targetElement.querySelector('.introjs-disableInteraction');
+  if (disableInteractionLayer) {
+    disableInteractionLayer.parentNode.removeChild(disableInteractionLayer);
+  }
+
+  //disable interaction
+  if (currentStep.disableInteraction) {
+    _disableInteraction.call(self);
+  }
+
+  // when it's the first step of tour
+  if (this._currentStep === 0 && this._introItems.length > 1) {
+    if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
+      skipTooltipButton.className = 'introjs-button introjs-skipbutton';
+    }
+    if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+      nextTooltipButton.className = 'introjs-button introjs-nextbutton';
+    }
+
+    if (this._options.hidePrev === true) {
+      if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
+        prevTooltipButton.className = 'introjs-button introjs-prevbutton introjs-hidden';
+      }
+      if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+        _addClass(nextTooltipButton, 'introjs-fullbutton');
+      }
+    } else {
+      if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
+        prevTooltipButton.className = 'introjs-button introjs-prevbutton introjs-disabled';
+      }
+    }
+
+    if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
+      skipTooltipButton.innerHTML = this._options.skipLabel;
+    }
+  } else if (this._introItems.length - 1 === this._currentStep || this._introItems.length === 1) {
+    // last step of tour
+    if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
+      skipTooltipButton.innerHTML = this._options.doneLabel;
+      // adding donebutton class in addition to skipbutton
+      _addClass(skipTooltipButton, 'introjs-donebutton');
+    }
+    if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
+      prevTooltipButton.className = 'introjs-button introjs-prevbutton';
+    }
+
+    if (this._options.hideNext === true) {
+      if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+        nextTooltipButton.className = 'introjs-button introjs-nextbutton introjs-hidden';
+      }
+      if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
+        _addClass(prevTooltipButton, 'introjs-fullbutton');
+      }
+    } else {
+      if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+        nextTooltipButton.className = 'introjs-button introjs-nextbutton introjs-disabled';
+      }
+    }
+  } else {
+    // steps between start and end
+    if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
+      skipTooltipButton.className = 'introjs-button introjs-skipbutton';
+    }
+    if (typeof prevTooltipButton !== "undefined" && prevTooltipButton !== null) {
+      prevTooltipButton.className = 'introjs-button introjs-prevbutton';
+    }
+    if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+      nextTooltipButton.className = 'introjs-button introjs-nextbutton';
+    }
+    if (typeof skipTooltipButton !== "undefined" && skipTooltipButton !== null) {
+      skipTooltipButton.innerHTML = this._options.skipLabel;
+    }
+  }
+
+  prevTooltipButton.setAttribute('role', 'button');
+  nextTooltipButton.setAttribute('role', 'button');
+  skipTooltipButton.setAttribute('role', 'button');
+
+  //Set focus on "next" button, so that hitting Enter always moves you onto the next step
+  if (typeof nextTooltipButton !== "undefined" && nextTooltipButton !== null) {
+    nextTooltipButton.focus();
+  }
+
+  tooltipLayer.style.opacity = 1;
+
+  // Call event handlers for 'afterChange'.
+  _executeEventListeners.call(this, EVENT_NAMES.afterChange, null, currentStep.element).then(
+    function () {
+      // unblock user interaction
+      this._blockUserInteraction = false;
+      this._previousStep = currentStep;
+    }.bind(this)
+  ).catch(
     function(blockEvents) {
       _failIntro.call(this, blockEvents);
     }.bind(this)
